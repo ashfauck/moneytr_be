@@ -1,0 +1,41 @@
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Logs
+logs/
+*.log
+
+# Build
+dist/
+build/
+
+# Dependencies
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+
+# Git
+.git/
+.gitignore
+
+# Tests
+coverage/
+
+# Documentation
+*.md
+docs/
+
+# CI/CD
+.github/
+
+# Misc
+.DS_Store
