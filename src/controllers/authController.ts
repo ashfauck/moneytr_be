@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { JwtUtils } from '../utils/jwt';
-import { ResponseUtils, parseTimeToMs } from '../utils/helpers';
+import { ResponseUtils } from '../utils/helpers';
 import db from '../services/database';
 import logger from '../utils/logger';
 import { AuthRequest } from '../types';
@@ -23,9 +23,8 @@ export class AuthController {
       }
 
       // Verify refresh token
-      let decoded;
       try {
-        decoded = JwtUtils.verifyRefreshToken(refreshToken);
+        JwtUtils.verifyRefreshToken(refreshToken);
       } catch (error) {
         res
           .status(401)

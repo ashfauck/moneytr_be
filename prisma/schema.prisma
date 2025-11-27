@@ -67,6 +67,10 @@ model User {
   deviceTokens       DeviceToken[]
   verificationRequests VerificationRequest[]
   biometricKeys      UserBiometricKey[]
+  tradingSettings    TradingSettings?
+  orders             Order[]
+  positions          Position[]
+  tradeLogs          TradeLog[]
 
   @@map("users")
   @@index([phoneNumber])
@@ -193,4 +197,156 @@ model BlacklistedToken {
 
   @@map("blacklisted_tokens")
   @@index([expiresAt])
+}
+
+// Trading System Models
+enum TradingMode {
+  SUGGEST_ONLY
+  AUTO_TRADE
+  DISABLED
+
+  @@map("trading_mode")
+}
+
+enum OrderStatus {
+  PENDING
+  COMPLETE
+  CANCELLED
+  REJECTED
+
+  @@map("order_status")
+}
+
+enum PositionStatus {
+  OPEN
+  CLOSED
+
+  @@map("position_status")
+}
+
+enum SignalType {
+  BUY
+  SELL
+  HOLD
+
+  @@map("signal_type")
+}
+
+model TradingSettings {
+  id                String      @id @default(uuid())
+  userId            String      @unique @map("user_id")
+  tradingMode       TradingMode @default(SUGGEST_ONLY) @map("trading_mode")
+  autoTradeEnabled  Boolean     @default(false) @map("auto_trade_enabled")
+  maxDailyLoss      Float?      @map("max_daily_loss")
+  maxPositionSize   Float?      @map("max_position_size")
+  riskPerTrade      Float?      @map("risk_per_trade")
+  stopLossPercent   Float?      @map("stop_loss_percent")
+  takeProfitPercent Float?      @map("take_profit_percent")
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("trading_settings")
+  @@index([userId])
+}
+
+model Order {
+  id              String      @id @default(uuid())
+  userId          String      @map("user_id")
+  kiteOrderId     String?     @unique @map("kite_order_id")
+  symbol          String
+  exchange        String?
+  action          String      // BUY/SELL
+  quantity        Int
+  orderType       String      @map("order_type") // MARKET/LIMIT/SL/SL-M
+  price           Float?
+  triggerPrice    Float?      @map("trigger_price")
+  averagePrice    Float?      @map("average_price")
+  filledQuantity  Int?        @map("filled_quantity")
+  status          OrderStatus @default(PENDING)
+  statusMessage   String?     @map("status_message")
+  pnl             Float?
+  aiSignalId      String?     @map("ai_signal_id")
+  source          String      @default("MANUAL") // MANUAL/AI
+  createdAt       DateTime    @default(now()) @map("created_at")
+  completedAt     DateTime?   @map("completed_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  aiSignal AISignal? @relation(fields: [aiSignalId], references: [id])
+
+  @@map("orders")
+  @@index([userId, status])
+  @@index([kiteOrderId])
+  @@index([createdAt])
+}
+
+model Position {
+  id            String         @id @default(uuid())
+  userId        String         @map("user_id")
+  symbol        String
+  exchange      String?
+  quantity      Int
+  averagePrice  Float          @map("average_price")
+  currentPrice  Float?         @map("current_price")
+  pnl           Float?
+  stopLoss      Float?         @map("stop_loss")
+  takeProfit    Float?         @map("take_profit")
+  status        PositionStatus @default(OPEN)
+  createdAt     DateTime       @default(now()) @map("created_at")
+  closedAt      DateTime?      @map("closed_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("positions")
+  @@index([userId, status])
+  @@index([symbol])
+}
+
+model AISignal {
+  id               String     @id @default(uuid())
+  symbol           String
+  signalType       SignalType @map("signal_type")
+  confidence       Float      // 0-100
+  entryPrice       Float?     @map("entry_price")
+  stopLoss         Float?     @map("stop_loss")
+  targetPrice      Float?     @map("target_price")
+  reasoning        String?    // AI reasoning/explanation
+  indicators       Json?      // Technical indicators used
+  modelVersion     String?    @map("model_version")
+  expiresAt        DateTime?  @map("expires_at")
+  executed         Boolean    @default(false)
+  executedAt       DateTime?  @map("executed_at")
+  createdAt        DateTime   @default(now()) @map("created_at")
+
+  orders Order[]
+
+  @@map("ai_signals")
+  @@index([symbol, signalType])
+  @@index([createdAt])
+  @@index([executed])
+}
+
+model TradeLog {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  symbol      String
+  action      String
+  quantity    Int
+  orderType   String   @map("order_type")
+  price       Float?
+  stopLoss    Float?   @map("stop_loss")
+  takeProfit  Float?   @map("take_profit")
+  aiSignalId  String?  @map("ai_signal_id")
+  source      String   // MANUAL/AI
+  status      String
+  metadata    Json?    // Additional data
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("trade_logs")
+  @@index([userId])
+  @@index([createdAt])
 }

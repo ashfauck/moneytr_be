@@ -16,6 +16,9 @@ import deviceRoutes from './routes/device';
 import userRoutes from './routes/user';
 import webhookRoutes from './routes/webhook';
 import healthRoutes from './routes/health';
+import kiteConnectRoutes from './routes/kiteConnect';
+import kitePostbackRoutes from './routes/kitePostback';
+import tradingRoutes from './routes/trading';
 
 // Create Express app
 const app: Express = express();
@@ -73,7 +76,7 @@ app.use((req: Request, _res: Response, next) => {
 app.get('/', (_req: Request, res: Response) => {
   res.json({
     success: true,
-    message: 'MoneyTR Phone Authentication API',
+    message: 'MoneyTR Trading API',
     version: '1.0.0',
     documentation: '/api/docs',
     timestamp: new Date().toISOString(),
@@ -86,6 +89,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/device', deviceRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/webhook', webhookRoutes);
+app.use('/api/kite', kiteConnectRoutes);
+app.use('/api/kite', kitePostbackRoutes);
+app.use('/api/trading', tradingRoutes);
 app.use('/health', healthRoutes);
 
 // 404 handler
@@ -100,6 +106,16 @@ app.use(errorHandler);
 
 async function startServer() {
   try {
+    // Log environment info
+    const envFile =
+      process.env.NODE_ENV === 'production'
+        ? '.env.prod'
+        : process.env.NODE_ENV === 'development'
+          ? '.env.dev'
+          : '.env';
+    logger.info(`📋 Using environment file: ${envFile}`);
+    logger.info(`🔧 NODE_ENV: ${config.node_env}`);
+
     // Test database connection
     logger.info('🔌 Connecting to database...');
     const dbConnected = await testDatabaseConnection();

@@ -1,6 +1,20 @@
 import dotenv from 'dotenv';
+import path from 'path';
 
-dotenv.config();
+// Determine which .env file to load based on NODE_ENV
+const nodeEnv = process.env.NODE_ENV || 'development';
+const envFile = nodeEnv === 'production' ? '.env.prod' : 
+                nodeEnv === 'development' ? '.env.dev' : '.env';
+
+const envPath = path.resolve(process.cwd(), envFile);
+
+// Load environment variables from the appropriate file
+const result = dotenv.config({ path: envPath });
+
+// Fallback to default .env if specific env file doesn't exist
+if (result.error) {
+  dotenv.config();
+}
 
 interface Config {
   node_env: string;

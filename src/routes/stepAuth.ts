@@ -3,7 +3,6 @@ import { StepAuthController } from '../controllers/stepAuthController';
 import { BiometricController } from '../controllers/biometricController';
 import { WebhookController } from '../controllers/webhookController';
 import {
-  phoneValidationLimiter,
   pinVerificationLimiter,
   registrationLimiter,
   loginLimiter,
