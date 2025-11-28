@@ -306,6 +306,241 @@ export class TradingController {
       res.status(500).json(ResponseUtils.error('EXECUTION_ERROR', 'Failed to execute trade'));
     }
   }
+
+  /**
+   * Place Order (Direct Kite Connect)
+   * POST /api/trading/place-order
+   */
+  static async placeOrder(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.userId;
+      const orderParams = req.body;
+
+      logger.info('Placing order', { userId, orderParams });
+
+      // Generate order ID
+      const orderId = 'PO' + Date.now();
+      
+      // Calculate execution price (with slippage for market orders)
+      let executionPrice = orderParams.price;
+      if (orderParams.order_type === 'MARKET') {
+        const slippage = (Math.random() - 0.5) * 0.002; // ±0.1%
+        executionPrice = executionPrice * (1 + slippage);
+      }
+      
+      // Save order to database
+      const order = await db.order.create({
+        data: {
+          userId,
+          kiteOrderId: orderId,
+          symbol: orderParams.tradingsymbol || orderParams.symbol,
+          exchange: orderParams.exchange || 'NSE',
+          action: orderParams.transaction_type || orderParams.action,
+          quantity: parseInt(orderParams.quantity),
+          orderType: orderParams.order_type,
+          price: executionPrice,
+          averagePrice: executionPrice,
+          filledQuantity: parseInt(orderParams.quantity),
+          status: 'COMPLETE',
+          source: 'PAPER_TRADING',
+          completedAt: new Date(),
+        },
+      });
+
+      // Update or create position
+      await updatePosition(userId, {
+        symbol: order.symbol,
+        exchange: order.exchange || 'NSE',
+        action: order.action,
+        quantity: order.quantity,
+        price: executionPrice,
+      });
+
+      logger.info('Order placed successfully', { orderId, userId });
+
+      res.json(
+        ResponseUtils.success({
+          orderId,
+          order,
+          status: 'COMPLETE',
+          message: 'Order placed successfully',
+        }),
+      );
+    } catch (error) {
+      logger.error('Error placing order:', error);
+      res.status(500).json(ResponseUtils.error('ORDER_ERROR', 'Failed to place order'));
+    }
+  }
+
+  /**
+   * Cancel Order
+   * DELETE /api/trading/cancel-order/:orderId
+   */
+  static async cancelOrder(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.userId;
+      const { orderId } = req.params;
+
+      logger.info('Cancelling order', { userId, orderId });
+
+      // Update order status in database
+      await db.order.updateMany({
+        where: {
+          userId,
+          kiteOrderId: orderId,
+          status: { in: ['PENDING'] },
+        },
+        data: {
+          status: 'CANCELLED',
+        },
+      });
+
+      res.json(
+        ResponseUtils.success({
+          orderId,
+          status: 'CANCELLED',
+          message: 'Order cancelled successfully',
+        }),
+      );
+    } catch (error) {
+      logger.error('Error cancelling order:', error);
+      res.status(500).json(ResponseUtils.error('CANCEL_ERROR', 'Failed to cancel order'));
+    }
+  }
+
+  /**
+   * Get Account Info
+   * GET /api/trading/account-info
+   */
+  static async getAccountInfo(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.userId;
+
+      logger.info('Fetching account info', { userId });
+
+      // Mock account info for testing
+      const accountInfo = {
+        balance: 50000,
+        marginUsed: 15000,
+        marginAvailable: 35000,
+        equity: 50000,
+        holdings: 25000,
+        dayPnl: 500,
+        totalPnl: 2500,
+      };
+
+      res.json(
+        ResponseUtils.success({
+          ...accountInfo,
+          message: 'Account info retrieved successfully (mock)',
+        }),
+      );
+    } catch (error) {
+      logger.error('Error fetching account info:', error);
+      res.status(500).json(ResponseUtils.error('ACCOUNT_ERROR', 'Failed to fetch account info'));
+    }
+  }
+}
+
+/**
+ * Update position after order execution
+ */
+async function updatePosition(
+  userId: string,
+  orderData: {
+    symbol: string;
+    exchange: string;
+    action: string;
+    quantity: number;
+    price: number;
+  },
+): Promise<void> {
+  const { symbol, exchange, action, quantity, price } = orderData;
+
+  // Find existing position
+  const existingPosition = await db.position.findFirst({
+    where: {
+      userId,
+      symbol,
+      status: 'OPEN',
+    },
+  });
+
+  if (action === 'BUY') {
+    if (existingPosition) {
+      // Update existing position
+      const totalQuantity = existingPosition.quantity + quantity;
+      const newAvgPrice =
+        (existingPosition.averagePrice * existingPosition.quantity + price * quantity) /
+        totalQuantity;
+
+      await db.position.update({
+        where: { id: existingPosition.id },
+        data: {
+          quantity: totalQuantity,
+          averagePrice: newAvgPrice,
+          currentPrice: price,
+          updatedAt: new Date(),
+        },
+      });
+    } else {
+      // Create new position
+      await db.position.create({
+        data: {
+          userId,
+          symbol,
+          exchange,
+          quantity,
+          averagePrice: price,
+          currentPrice: price,
+          status: 'OPEN',
+        },
+      });
+    }
+  } else if (action === 'SELL') {
+    if (existingPosition) {
+      const newQuantity = existingPosition.quantity - quantity;
+      
+      // Calculate realized P&L
+      const pnl = (price - existingPosition.averagePrice) * quantity;
+
+      if (newQuantity <= 0) {
+        // Close position
+        await db.position.update({
+          where: { id: existingPosition.id },
+          data: {
+            quantity: 0,
+            currentPrice: price,
+            pnl,
+            status: 'CLOSED',
+            closedAt: new Date(),
+            updatedAt: new Date(),
+          },
+        });
+
+        // Update the order with P&L
+        await db.order.updateMany({
+          where: {
+            userId,
+            symbol,
+            status: 'COMPLETE',
+          },
+          data: { pnl },
+        });
+      } else {
+        // Reduce position
+        await db.position.update({
+          where: { id: existingPosition.id },
+          data: {
+            quantity: newQuantity,
+            currentPrice: price,
+            pnl: existingPosition.pnl ? existingPosition.pnl + pnl : pnl,
+            updatedAt: new Date(),
+          },
+        });
+      }
+    }
+  }
 }
 
 /**

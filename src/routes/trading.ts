@@ -102,4 +102,34 @@ router.post(
   TradingController.executeTrade,
 );
 
+/**
+ * Place Order (Direct Kite Connect)
+ * POST /api/trading/place-order
+ */
+router.post(
+  '/place-order',
+  body('exchange').isString().notEmpty(),
+  body('tradingsymbol').isString().notEmpty(),
+  body('transaction_type').isIn(['BUY', 'SELL']),
+  body('quantity').isInt({ min: 1 }),
+  body('order_type').isIn(['MARKET', 'LIMIT', 'SL', 'SL-M']),
+  body('product').isIn(['CNC', 'MIS', 'NRML']),
+  body('price').optional().isFloat({ min: 0 }),
+  body('trigger_price').optional().isFloat({ min: 0 }),
+  handleValidationErrors,
+  TradingController.placeOrder,
+);
+
+/**
+ * Cancel Order
+ * DELETE /api/trading/cancel-order/:orderId
+ */
+router.delete('/cancel-order/:orderId', TradingController.cancelOrder);
+
+/**
+ * Get Account Info
+ * GET /api/trading/account-info
+ */
+router.get('/account-info', TradingController.getAccountInfo);
+
 export default router;

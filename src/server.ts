@@ -2,6 +2,7 @@ import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+import path from 'path';
 import config from './utils/config';
 import logger from './utils/logger';
 import { testDatabaseConnection, disconnectDatabase } from './services/database';
@@ -82,6 +83,9 @@ app.get('/', (_req: Request, res: Response) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// Serve static files (testing interface)
+app.use('/test', express.static(path.join(__dirname, '../public')));
 
 // API routes
 app.use('/api/step-auth', stepAuthRoutes);
