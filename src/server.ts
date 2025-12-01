@@ -19,6 +19,7 @@ import webhookRoutes from './routes/webhook';
 import healthRoutes from './routes/health';
 import kiteConnectRoutes from './routes/kiteConnect';
 import kitePostbackRoutes from './routes/kitePostback';
+import kiteAuditRoutes from './routes/kiteAudit';
 import tradingRoutes from './routes/trading';
 
 // Create Express app
@@ -95,6 +96,7 @@ app.use('/api/user', userRoutes);
 app.use('/api/webhook', webhookRoutes);
 app.use('/api/kite', kiteConnectRoutes);
 app.use('/api/kite', kitePostbackRoutes);
+app.use('/api/kite', kiteAuditRoutes);
 app.use('/api/trading', tradingRoutes);
 app.use('/health', healthRoutes);
 

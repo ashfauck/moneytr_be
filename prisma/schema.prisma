@@ -71,6 +71,11 @@ model User {
   orders             Order[]
   positions          Position[]
   tradeLogs          TradeLog[]
+  kiteConnection     KiteConnection?
+  kiteApiLogs        KiteApiLog[]
+  kiteOrderMirrors   KiteOrderMirror[]
+  kitePositionMirrors KitePositionMirror[]
+  kiteHoldingMirrors KiteHoldingMirror[]
 
   @@map("users")
   @@index([phoneNumber])
@@ -349,4 +354,188 @@ model TradeLog {
   @@map("trade_logs")
   @@index([userId])
   @@index([createdAt])
+}
+
+// Kite Connect Integration Models
+model KiteConnection {
+  id              String    @id @default(uuid())
+  userId          String    @unique @map("user_id")
+  kiteUserId      String    @map("kite_user_id")
+  kiteUserName    String?   @map("kite_user_name")
+  accessToken     String    @map("access_token") // Encrypted
+  refreshToken    String?   @map("refresh_token") // Encrypted
+  apiKey          String    @map("api_key")
+  isActive        Boolean   @default(true) @map("is_active")
+  connectedAt     DateTime  @default(now()) @map("connected_at")
+  lastUsedAt      DateTime  @default(now()) @map("last_used_at")
+  expiresAt       DateTime? @map("expires_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiLogs KiteApiLog[]
+
+  @@map("kite_connections")
+  @@index([userId])
+  @@index([kiteUserId])
+  @@index([isActive])
+}
+
+enum KiteApiMethod {
+  GET
+  POST
+  PUT
+  DELETE
+  PATCH
+
+  @@map("kite_api_method")
+}
+
+enum KiteApiStatus {
+  SUCCESS
+  ERROR
+  TIMEOUT
+  PENDING
+
+  @@map("kite_api_status")
+}
+
+model KiteApiLog {
+  id                String         @id @default(uuid())
+  userId            String         @map("user_id")
+  kiteConnectionId  String?        @map("kite_connection_id")
+  endpoint          String         // e.g., "/orders", "/positions", "/quote"
+  method            KiteApiMethod
+  requestPayload    Json?          @map("request_payload")
+  responsePayload   Json?          @map("response_payload")
+  statusCode        Int?           @map("status_code")
+  status            KiteApiStatus  @default(PENDING)
+  errorMessage      String?        @map("error_message")
+  responseTime      Int?           @map("response_time") // in milliseconds
+  ipAddress         String?        @map("ip_address")
+  userAgent         String?        @map("user_agent")
+  createdAt         DateTime       @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kiteConnection KiteConnection? @relation(fields: [kiteConnectionId], references: [id], onDelete: SetNull)
+
+  @@map("kite_api_logs")
+  @@index([userId])
+  @@index([endpoint])
+  @@index([status])
+  @@index([createdAt])
+  @@index([kiteConnectionId])
+}
+
+// Kite Order Mirror - Store all orders before sending to Kite
+model KiteOrderMirror {
+  id                String    @id @default(uuid())
+  userId            String    @map("user_id")
+  kiteOrderId       String?   @unique @map("kite_order_id") // Populated after Kite response
+  exchange          String
+  tradingsymbol     String    @map("trading_symbol")
+  transactionType   String    @map("transaction_type") // BUY/SELL
+  quantity          Int
+  orderType         String    @map("order_type") // MARKET/LIMIT/SL/SL-M
+  product           String    // CNC/MIS/NRML
+  price             Float?
+  triggerPrice      Float?    @map("trigger_price")
+  validity          String?   @default("DAY")
+  tag               String?
+  status            String    @default("PENDING") // PENDING/SENT/COMPLETE/CANCELLED/REJECTED
+  averagePrice      Float?    @map("average_price")
+  filledQuantity    Int?      @map("filled_quantity")
+  pendingQuantity   Int?      @map("pending_quantity")
+  statusMessage     String?   @map("status_message")
+  kiteResponse      Json?     @map("kite_response")
+  sentToKiteAt      DateTime? @map("sent_to_kite_at")
+  receivedFromKiteAt DateTime? @map("received_from_kite_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("kite_order_mirrors")
+  @@index([userId])
+  @@index([kiteOrderId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Kite Position Mirror - Store positions fetched from Kite
+model KitePositionMirror {
+  id               String   @id @default(uuid())
+  userId           String   @map("user_id")
+  tradingsymbol    String   @map("trading_symbol")
+  exchange         String
+  product          String
+  quantity         Int
+  overnightQuantity Int     @map("overnight_quantity")
+  multiplier       Float    @default(1)
+  averagePrice     Float    @map("average_price")
+  closePrice       Float?   @map("close_price")
+  lastPrice        Float    @map("last_price")
+  value            Float
+  pnl              Float
+  m2m              Float    @map("m2m")
+  unrealised       Float
+  realised         Float
+  buyQuantity      Int      @map("buy_quantity")
+  buyPrice         Float    @map("buy_price")
+  buyValue         Float    @map("buy_value")
+  buyM2m           Float    @map("buy_m2m")
+  sellQuantity     Int      @map("sell_quantity")
+  sellPrice        Float    @map("sell_price")
+  sellValue        Float    @map("sell_value")
+  sellM2m          Float    @map("sell_m2m")
+  dayBuyQuantity   Int      @map("day_buy_quantity")
+  dayBuyPrice      Float    @map("day_buy_price")
+  dayBuyValue      Float    @map("day_buy_value")
+  daySellQuantity  Int      @map("day_sell_quantity")
+  daySellPrice     Float    @map("day_sell_price")
+  daySellValue     Float    @map("day_sell_value")
+  kiteResponse     Json?    @map("kite_response")
+  fetchedAt        DateTime @default(now()) @map("fetched_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("kite_position_mirrors")
+  @@index([userId])
+  @@index([tradingsymbol])
+  @@index([fetchedAt])
+  @@unique([userId, tradingsymbol, product])
+}
+
+// Kite Holdings Mirror - Store holdings fetched from Kite
+model KiteHoldingMirror {
+  id                String   @id @default(uuid())
+  userId            String   @map("user_id")
+  tradingsymbol     String   @map("trading_symbol")
+  exchange          String
+  isin              String?
+  quantity          Int
+  t1Quantity        Int      @map("t1_quantity")
+  realisedQuantity  Int      @map("realised_quantity")
+  collateralQuantity Int     @map("collateral_quantity")
+  collateralType    String?  @map("collateral_type")
+  averagePrice      Float    @map("average_price")
+  lastPrice         Float    @map("last_price")
+  closePrice        Float?   @map("close_price")
+  pnl               Float
+  dayChange         Float    @map("day_change")
+  dayChangePercentage Float  @map("day_change_percentage")
+  kiteResponse      Json?    @map("kite_response")
+  fetchedAt         DateTime @default(now()) @map("fetched_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("kite_holding_mirrors")
+  @@index([userId])
+  @@index([tradingsymbol])
+  @@index([fetchedAt])
+  @@unique([userId, tradingsymbol])
 }
